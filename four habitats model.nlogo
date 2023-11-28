@@ -60,13 +60,13 @@ to anchorsetup ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; setup functio
   set fourth-anchor one-of patches with [ is_anchor = false];
   ask fourth-anchor [ set is_anchor true]
 
-  ask first-anchor [set patch-moisture random-normal 0 10 ; // random-normal can generate negatives also- the first number is the mean, second is stdev from there.
+  ask first-anchor [set patch-moisture random-normal 5 5 ; // random-normal can generate negatives also- the first number is the mean, second is stdev from there.
   color-by-quality]
-  ask second-anchor [set patch-moisture random-normal 0 10 ;
+  ask second-anchor [set patch-moisture random-normal 5 5 ;
   color-by-quality]
-  ask third-anchor [set patch-moisture random-normal 0 10 ;
+  ask third-anchor [set patch-moisture random-normal 5 5 ;
   color-by-quality]
-  ask fourth-anchor [set patch-moisture random-normal 0 10 ;
+  ask fourth-anchor [set patch-moisture random-normal 5 5 ;
   color-by-quality]
 
   ask first-anchor
@@ -82,15 +82,15 @@ to anchorsetup ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; setup functio
   [make-anchor-habitat]
 
   set-default-shape turtles "salamander"
-  set num-spawned 10
-  create-turtles 10
+  set num-spawned 100
+  create-turtles 100
   [
     set color white
     set size 3
     setxy (random-xcor) (random-ycor)
     set start-patch patch-here
     set energy 50
-    set time-since-birth 3
+    set time-since-birth 0
   ]
   reset-ticks;
 end
@@ -99,48 +99,48 @@ to anchor-go
 if ticks > 0 and ticks mod 1 = 0
   [
   ask patches
-    [set patch-moisture (((patch-moisture + (-2 + random 4)) + [patch-moisture] of one-of neighbors) / 2) ;; varies background patches
+    [set patch-moisture (((patch-moisture + (-2 + random 3)) + [patch-moisture] of one-of neighbors) / 2) ;; varies background patches
       set patch-temp (patch-temp + (-5 + random 10)) ;; varies patch temperature
       temp-boundary-check
-    set patch-moisture (mean [patch-moisture] of neighbors + (-1 + random 2)) ;;
-      if patch-moisture > 5 ;
+    set patch-moisture (mean [patch-moisture] of neighbors + (-2 + random 4)) ;;
+      if patch-moisture > 10 ;
           [set patch-moisture (patch-moisture - 1)] ;for some reason, taking away the upper bounds checking brought the average patch-qual value closer to 0
-      if patch-moisture < -5 ;
-          [set patch-moisture (patch-moisture + (3 + random 6))] ;; stopping things from getting so negative
+      if patch-moisture < -10 ;
+          [set patch-moisture (patch-moisture + 1)] ;; stop things from getting so negative: [set patch-moisture (patch-moisture + (3 + random 6))]
     ]
 
-  ask first-anchor [set patch-moisture patch-moisture + (0 + random 3)] ; // makes quality of anchor vary a little - adds a number between 0 and 5 to the quality value
+  ask first-anchor [set patch-moisture patch-moisture + (0 + random 4)] ; // makes quality of anchor vary a little - adds a number between 0 and 5 to the quality value
   ask first-anchor
     [
-      ask patches in-radius habitat-size
-        [set patch-moisture patch-moisture + (0 + random 3) ;; // makes quality of patch surrounding anchor vary a little - adds a number between 0 and 5 to the quality value
+      ask n-of 15 patches in-radius habitat-size
+        [set patch-moisture (([patch-moisture] of first-anchor) + (-1 + random 4)) ;; // makes quality of patch surrounding anchor vary a little - adds a number between 0 and 5 to the quality value
           quality-boundary-check]
     ]
 
 
-  ask second-anchor [set patch-moisture patch-moisture + (0 + random 3)] ;; same as for first-anchor
+  ask second-anchor [set patch-moisture patch-moisture + (0 + random 4)] ;; same as for first-anchor
   ask second-anchor
     [
-      ask patches in-radius habitat-size
-        [set patch-moisture patch-moisture + (0 + random 3)
+      ask n-of 15 patches in-radius habitat-size
+        [set patch-moisture (([patch-moisture] of second-anchor) + (-1 + random 4))
           quality-boundary-check]
     ]
 
 
-  ask third-anchor [set patch-moisture patch-moisture + (0 + random 3)] ;
+  ask third-anchor [set patch-moisture patch-moisture + (0 + random 4)] ;
   ask third-anchor
     [
-      ask patches in-radius habitat-size
-        [set patch-moisture patch-moisture + (0 + random 3)
+      ask n-of 15 patches in-radius habitat-size
+        [set patch-moisture (([patch-moisture] of third-anchor) + (-1 + random 4))
           quality-boundary-check]
     ]
 
 
-  ask fourth-anchor [set patch-moisture patch-moisture + (0 + random 3)] ;
+  ask fourth-anchor [set patch-moisture patch-moisture + (0 + random 4)] ;
   ask fourth-anchor
     [
-      ask patches in-radius habitat-size
-        [set patch-moisture patch-moisture + (0 + random 3)
+      ask n-of 15 patches in-radius habitat-size
+        [set patch-moisture (([patch-moisture] of fourth-anchor) + (-1 + random 4))
           quality-boundary-check]
     ]
     ask patches
@@ -258,13 +258,14 @@ end
 to rain ;; function for rainfall, spatially clumped.
   if random 100 < prob-rain
   [
-    while [time-since-rain >= 5]
+    while [time-since-rain >= 10]
     [
-      ask n-of 2 patches; ;; when rain happens, one random patch is chosen to have quality increased.
-      [set patch-moisture patch-moisture + 5
+      ask n-of 2 patches with [is_anchor = false]; ;; when rain happens, two random patches are chosen to have quality increased.
+      [ set pcolor green
+        set patch-moisture (patch-moisture + 10)
         set patch-temp (patch-temp - random-normal 0 10)] ;; temperature is lowered a random amount by rain
-      ask up-to-n-of 20 patches in-radius 5
-      [set patch-moisture patch-moisture + 3 ;; spread of patches around the chosen rain patches receive "less rain" (less of a quality boost)
+      ask up-to-n-of 20 patches in-radius 10
+      [set patch-moisture (patch-moisture + 3) ;; spread of patches around the chosen rain patches receive "less rain" (less of a quality boost)
         set patch-temp (patch-temp - random-normal 0 5)]
       print "rainfall"
       set time-since-rain 0
