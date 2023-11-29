@@ -16,11 +16,10 @@ globals
   num-dead
   num-spawned
   tick-count
-  ticks-survived
+  living-frogs
   time-since-rain ;; tracker for rain delay
   moisture-gain-threshhold ;; moisture of patch above which frogs gain moisture
   ;;wetness-threshhold is wetness of frog, below which they decide to move. set by user in interface.
-
 ]
 
 patches-own
@@ -33,9 +32,10 @@ patches-own
 turtles-own ;; salamander traits
 [
   start-patch
-  wetness ; low wetness will impact movement patterns/efficiency.
+  wetness ; low wetness will impact movement choices
   time-since-birth ;
   time-since-reproduction ;
+  density ; measure of how many frogs are on same patch as this frog
 ]
 
 to anchorsetup ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; setup function for habitats clustered around anchor patches
@@ -90,7 +90,7 @@ to anchorsetup ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; setup functio
     set size 3
     setxy (random-xcor) (random-ycor)
     set start-patch patch-here
-    set wetness 50
+    set wetness 100
     set time-since-birth 0
   ]
   reset-ticks;
@@ -149,33 +149,39 @@ if ticks > 0 and ticks mod 1 = 0
     ]
   ]
 
-  ask patches [rain]
   ask patches [fade-anchor] ;; if habitat patch-quality average less than -5 [number not from data] AND generated float < prob-change, patch fades
-  ask turtles [move-wet] ;;
+  ask turtles [move] ;;
   ask turtles [age]
   ask turtles [desiccate]
-  ask turtles
-  [
-    if [patch-moisture] of patch-here < 0 [set wetness (wetness - 2)]
-    if [patch-moisture] of patch-here > 0 [set wetness (wetness + 1)]
-  ]
+  ask turtles [density-effect]
   ask turtles [death]
-  if num-dead = num-spawned [stop]
+  ask patches [rain]
+  ask patches [color-by-quality]
   set tick-count (tick-count + 1)
   set time-since-rain (time-since-rain + 1)
   tick;
-  if ticks >= 1000 [stop]
-  set ticks-survived tick-count
+  if ticks >= 250 [stop]
+  set living-frogs count turtles
 end
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; functions
+to density-effect
+  set density (count turtles in-radius 1)
+  if density > 1 ;; frogs "steal" moisture from each other
+  [
+    set wetness (wetness - 10) ;; density wetness effect
+    rt random-normal 0 180
+    fd 10 ;; move forward in random direction to break up clumping
+    set wetness (wetness - 20)
+  ]
+end
 
 to desiccate
   if [patch-moisture] of patch-here < moisture-gain-threshhold
-  [set wetness (wetness - 1)] ;; if the new patch has low quality, energy is lost (desiccation, sort of. this assumes movement is more taxing in drier/low quality patches)
+  [set wetness (wetness - 10)] ;; if the new patch has low quality, moisture is lost (movement is more taxing in drier/low quality patches)
   if [patch-moisture] of patch-here >= moisture-gain-threshhold
-  [set wetness (wetness + 1)]
+  [set wetness (wetness + 10)]
 end
 
 to age
@@ -192,20 +198,30 @@ to death
 end
 
 to move-wet
-  let p max-one-of patches in-radius 2 [patch-moisture] ;; chooses neighboring patch with highest quality
-  if [patch-moisture] of patch-here < 5
-     [set wetness (wetness - 2)] ;; if current patch quality is less than 5, loses extra energy.
-  if [patch-moisture] of p >= [patch-moisture] of patch-here [move-to p] ;;move to highest quality patch of neighbors UNLESS current patch is highest.
-  if [patch-moisture] of p < [patch-moisture] of patch-here
+  let chance-right (random 100)
+  if chance-right < 75
+  [
+    let p max-one-of other patches in-radius 2 [patch-moisture] ;; chooses neighboring patch with highest quality
+    if [patch-moisture] of patch-here < 5
+        [set wetness (wetness - 10)] ;; if current patch quality is less than 5, loses extra energy.
+    if [patch-moisture] of p >= [patch-moisture] of patch-here [move-to p] ;;move to highest quality patch of neighbors UNLESS current patch is highest.
+    if [patch-moisture] of p < [patch-moisture] of patch-here
+    [
+      rt random-normal 0 180
+      fd 10 ;; move forward in random direction.
+      set wetness (wetness - 20)
+    ]
+  ]
+  if chance-right >= 75
   [
     rt random-normal 0 180
-    fd 2 ;; move one patch forward in random direction.
-    set wetness (wetness - 2)
+      fd 10 ;; move forward in random direction.
+      set wetness (wetness - 20)
   ]
 end
 
 to move ;; if wetness of the patch is not enough to gain moisture, AND if frog is drier than wetness threshhold for movement, MOVE-WET.
-  if [wetness] of patch-here < moisture-gain-threshhold
+  if [patch-moisture] of patch-here < moisture-gain-threshhold
   [
     if wetness < wetness-threshhold [move-wet]
   ]
@@ -223,17 +239,16 @@ end
 to rain ;; function for rainfall, spatially clumped.
   if random 100 < prob-rain
   [
-    while [time-since-rain >= 10]
+    if time-since-rain >= 20
     [
-      ask n-of 2 patches with [is_anchor = false]; ;; when rain happens, two random patches are chosen to have quality increased.
+      ask n-of 4 patches with [is_anchor = false]; ;; when rain happens, two random patches are chosen to have quality increased.
       [
-        set pcolor green
-        set patch-moisture (patch-moisture + 10)
+        set pcolor pink
+        set patch-moisture 10
+        ask n-of 15 patches in-radius 4
+        [ set patch-moisture (patch-moisture + 5) ] ;; spread of patches around the chosen rain patches receive "less rain" (less of a quality boost)
       ]
-      ask up-to-n-of 20 patches in-radius 10
-      [ set patch-moisture (patch-moisture + 3) ] ;; spread of patches around the chosen rain patches receive "less rain" (less of a quality boost)
-
-      print "rainfall"
+      ;print "rainfall"
       set time-since-rain 0
     ]
   ]
@@ -287,17 +302,17 @@ to fade-anchor
         [
           ask first-anchor
           [
-              set is_anchor false
+            set is_anchor false
             ask patches in-radius habitat-size
             [
-              set patch-moisture random-normal 0 0.5 ;; sets patches of habitat back to standard background variation
+                set patch-moisture ((mean [patch-moisture] of patches) + random-normal 0 0.5) ;; sets patches of habitat back to standard background variation
             ]
             set first-anchor one-of patches with [ is_anchor = false];; anchor moves.
             make-anchor-habitat
-              ask first-anchor                        ;; this block is an attempt to get newly-moved patches to persist instead of fading again so quickly
+            ask first-anchor                        ;; this block is an attempt to get newly-moved patches to persist instead of fading again so quickly
               [                                       ;;
                 ask patches in-radius habitat-size    ;;
-                [set patch-moisture patch-moisture + 2] ;;
+                  [set patch-moisture patch-moisture + random-normal 0 2]
               ]                                       ;;
             ;print "first-anchor moved!"
           ]
@@ -312,17 +327,17 @@ to fade-anchor
         [
           ask second-anchor
           [
-              set is_anchor false
+             set is_anchor false
             ask patches in-radius habitat-size
             [
-              set patch-moisture random-normal 0 0.5
+              set patch-moisture ((mean [patch-moisture] of patches) + random-normal 0 0.5)
             ]
             set second-anchor one-of patches with [ is_anchor = false]
             make-anchor-habitat
               ask second-anchor
               [
                 ask patches in-radius habitat-size
-                [set patch-moisture patch-moisture + 2]
+                  [set patch-moisture patch-moisture + random-normal 0 2]
               ]
             ;print "second-anchor moved!"
           ]
@@ -340,14 +355,14 @@ to fade-anchor
             set is_anchor false
             ask patches in-radius habitat-size
             [
-              set patch-moisture random-normal 0 0.5
+              set patch-moisture ((mean [patch-moisture] of patches) + random-normal 0 0.5)
             ]
             set third-anchor one-of patches with [ is_anchor = false]
             make-anchor-habitat
               ask third-anchor
               [
                 ask patches in-radius habitat-size
-                [set patch-moisture patch-moisture + 2]
+                  [set patch-moisture patch-moisture + random-normal 0 2]
               ]
             ;print "third-anchor moved!"
           ]
@@ -365,14 +380,14 @@ to fade-anchor
             set is_anchor false
             ask patches in-radius habitat-size
             [
-              set patch-moisture random-normal 0 0.5
+              set patch-moisture ((mean [patch-moisture] of patches) + random-normal 0 0.5)
             ]
             set fourth-anchor one-of patches with [ is_anchor = false]
             make-anchor-habitat
             ask fourth-anchor
               [
                 ask patches in-radius habitat-size
-                [set patch-moisture patch-moisture + 2]
+                  [set patch-moisture patch-moisture + random-normal 0 2]
               ]
             ;print "fourth-anchor moved!"
           ]
@@ -432,11 +447,11 @@ SLIDER
 wetness-threshhold
 wetness-threshhold
 0
-50
-20.0
+100
+80.0
 1
 1
-C°
+NIL
 HORIZONTAL
 
 SLIDER
@@ -677,8 +692,8 @@ MONITOR
 10
 266
 55
-ticks-survived
-ticks-survived
+living-frogs
+living-frogs
 17
 1
 11
