@@ -18,11 +18,13 @@ globals
   tick-count
   ticks-survived
   time-since-rain ;; tracker for rain delay
+  moisture-gain-threshhold ;; moisture of patch above which frogs gain moisture
+  ;;wetness-threshhold is wetness of frog, below which they decide to move. set by user in interface.
+
 ]
 
 patches-own
 [
-  patch-temp ; decimal value used to incorporate temperature into suitability calculation
   patch-moisture ; basically just wetness for now
   ;habitat-moisture ; decimal value used to incorporate moisture into suitability calculation
   is_anchor ; boolean used to create agentset of current anchor patches
@@ -31,21 +33,20 @@ patches-own
 turtles-own ;; salamander traits
 [
   start-patch
-  wetness ; low wetness will impact movement patterns/efficiency. 1-6, 1 is low. 1-3 dry, 4-6 wet.
+  wetness ; low wetness will impact movement patterns/efficiency.
   time-since-birth ;
   time-since-reproduction ;
-  energy
 ]
 
 to anchorsetup ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; setup function for habitats clustered around anchor patches
   clear-all
   set tick-count 0
+  set moisture-gain-threshhold 0 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; set moisture gain threshhold.
   ask patches [
     set is_anchor false ;; no patches have been chosen as anchors yet
     set quality-boundary-pos 15 ;; quality value boundaries after which patches are normalized towards 0
     set quality-boundary-neg -15
     set patch-moisture random-normal 0 0.5 ;; creates background variation patches
-    set patch-temp random-normal avg-habitat-temp 10
     color-by-quality]
 
   set first-anchor one-of patches ; // assigns random patch to be anchor
@@ -89,7 +90,7 @@ to anchorsetup ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; setup functio
     set size 3
     setxy (random-xcor) (random-ycor)
     set start-patch patch-here
-    set energy 50
+    set wetness 50
     set time-since-birth 0
   ]
   reset-ticks;
@@ -99,10 +100,9 @@ to anchor-go
 if ticks > 0 and ticks mod 1 = 0
   [
   ask patches
-    [set patch-moisture (((patch-moisture + (-2 + random 3)) + [patch-moisture] of one-of neighbors) / 2) ;; varies background patches
-      set patch-temp (patch-temp + (-5 + random 10)) ;; varies patch temperature
-      temp-boundary-check
-    set patch-moisture (mean [patch-moisture] of neighbors + (-2 + random 4)) ;;
+    [
+      set patch-moisture (((patch-moisture + (-2 + random 3)) + [patch-moisture] of one-of neighbors) / 2) ;; varies background patches
+      set patch-moisture (mean [patch-moisture] of neighbors + (-2 + random 4)) ;;
       if patch-moisture > 10 ;
           [set patch-moisture (patch-moisture - 1)] ;for some reason, taking away the upper bounds checking brought the average patch-qual value closer to 0
       if patch-moisture < -10 ;
@@ -151,17 +151,14 @@ if ticks > 0 and ticks mod 1 = 0
 
   ask patches [rain]
   ask patches [fade-anchor] ;; if habitat patch-quality average less than -5 [number not from data] AND generated float < prob-change, patch fades
-  ask turtles [if time-since-birth = 0 [disperse]]
   ask turtles [move-wet] ;;
-  ;;ask turtles [reproduce] REMOVED FOLLOWING HONORS MEETING 8/28
   ask turtles [age]
   ask turtles [desiccate]
   ask turtles
   [
-    if [patch-moisture] of patch-here < 0 [set energy (energy - 2)]
-    if [patch-moisture] of patch-here > 0 [set energy (energy + 1)]
+    if [patch-moisture] of patch-here < 0 [set wetness (wetness - 2)]
+    if [patch-moisture] of patch-here > 0 [set wetness (wetness + 1)]
   ]
-  ask patches [temp-boundary-check]
   ask turtles [death]
   if num-dead = num-spawned [stop]
   set tick-count (tick-count + 1)
@@ -175,16 +172,10 @@ end
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; functions
 
 to desiccate
-  if [patch-moisture] of patch-here < 0
-  [
-    set wetness (wetness - 1)
-  ]
-  if [patch-moisture] of patch-here > 0
-  [
-    set wetness (wetness + 1)
-  ]
-  if wetness < 1 [set wetness 1]
-  if wetness > 6 [set wetness 6]
+  if [patch-moisture] of patch-here < moisture-gain-threshhold
+  [set wetness (wetness - 1)] ;; if the new patch has low quality, energy is lost (desiccation, sort of. this assumes movement is more taxing in drier/low quality patches)
+  if [patch-moisture] of patch-here >= moisture-gain-threshhold
+  [set wetness (wetness + 1)]
 end
 
 to age
@@ -193,48 +184,31 @@ to age
 end
 
 to death
-  if energy < 2 ;; when salamanders cant move anymore they die.
+  if wetness = 0 ;; when frogs dry out they die.
   [
     set num-dead (num-dead + 1)
     die
   ]
 end
 
-to reproduce
-  if [patch-moisture] of patch-here > 8
-  [
-    if time-since-birth > 10
-    [
-      if time-since-reproduction > 5
-      [
-      set energy (energy - 5)
-      hatch 2 [set time-since-birth 0 set energy 25 set color lime]
-      set num-spawned (num-spawned + 2)
-      set time-since-reproduction 0
-      ]
-    ]
-  ]
-
-end
-
-to disperse ;; so juveniles dont just stick around in their natal habitat. they move out of the high-quality patch they were born in by moving forward 5 patches in
-  rt random-normal 0 180 ;; a random direction, then moving to a patch with suboptimal quality
-    fd 5
-  move-to one-of patches with [patch-moisture < 8]
-end
-
 to move-wet
-  let p max-one-of neighbors [patch-moisture] ;; chooses neighboring patch with highest quality
+  let p max-one-of patches in-radius 2 [patch-moisture] ;; chooses neighboring patch with highest quality
   if [patch-moisture] of patch-here < 5
-     [set energy (energy - 2)] ;; if current patch quality is less than 5, loses extra energy.
+     [set wetness (wetness - 2)] ;; if current patch quality is less than 5, loses extra energy.
   if [patch-moisture] of p >= [patch-moisture] of patch-here [move-to p] ;;move to highest quality patch of neighbors UNLESS current patch is highest.
+  if [patch-moisture] of p < [patch-moisture] of patch-here
+  [
+    rt random-normal 0 180
+    fd 2 ;; move one patch forward in random direction.
+    set wetness (wetness - 2)
+  ]
 end
 
-to move
-  rt random-normal 0 180
-    fd 1 ;; move one patch forward in random direction.
-  if [patch-moisture] of patch-here < 3
-  [set energy (energy - 2)] ;; if the new patch has low quality, energy is lost (desiccation, sort of. this assumes movement is more taxing in drier/low quality patches)
+to move ;; if wetness of the patch is not enough to gain moisture, AND if frog is drier than wetness threshhold for movement, MOVE-WET.
+  if [wetness] of patch-here < moisture-gain-threshhold
+  [
+    if wetness < wetness-threshhold [move-wet]
+  ]
 end
 
 to quality-boundary-check ;;
@@ -246,27 +220,19 @@ to quality-boundary-check ;;
           [set patch-moisture (patch-moisture + (5 + random 10))]
 end
 
-to temp-boundary-check ;;
-  set temp-boundary-high 35 ;; quality value boundaries after which patches are normalized towards 0
-  set temp-boundary-low 0 ;;
-  if patch-temp > temp-boundary-high ;
-          [set patch-temp (patch-temp - (5 + random 10))]
-      if patch-temp < temp-boundary-low ;
-          [set patch-temp (patch-temp + (5 + random 10))]
-end
-
 to rain ;; function for rainfall, spatially clumped.
   if random 100 < prob-rain
   [
     while [time-since-rain >= 10]
     [
       ask n-of 2 patches with [is_anchor = false]; ;; when rain happens, two random patches are chosen to have quality increased.
-      [ set pcolor green
+      [
+        set pcolor green
         set patch-moisture (patch-moisture + 10)
-        set patch-temp (patch-temp - random-normal 0 10)] ;; temperature is lowered a random amount by rain
+      ]
       ask up-to-n-of 20 patches in-radius 10
-      [set patch-moisture (patch-moisture + 3) ;; spread of patches around the chosen rain patches receive "less rain" (less of a quality boost)
-        set patch-temp (patch-temp - random-normal 0 5)]
+      [ set patch-moisture (patch-moisture + 3) ] ;; spread of patches around the chosen rain patches receive "less rain" (less of a quality boost)
+
       print "rainfall"
       set time-since-rain 0
     ]
@@ -463,10 +429,10 @@ SLIDER
 173
 177
 206
-avg-habitat-temp
-avg-habitat-temp
+wetness-threshhold
+wetness-threshhold
 0
-35
+50
 20.0
 1
 1
