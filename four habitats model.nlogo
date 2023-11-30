@@ -7,9 +7,9 @@ globals
   second-anchor
   third-anchor
   fourth-anchor
-  quality-boundary-neg ;; lower value boundary after which quality values are pulled back towards zero.
+  moisture-boundary-neg ;; lower value boundary after which quality values are pulled back towards zero.
                    ;; intended to normalize values and limit extremity.
-  quality-boundary-pos ;; upper value boundary after which quality values are pulled back towards zero.
+  moisture-boundary-pos ;; upper value boundary after which quality values are pulled back towards zero.
                    ;; intended to normalize values and limit extremity.
   temp-boundary-high ;; upper temperature boundary
   temp-boundary-low ;; lower temperature boundary value
@@ -18,7 +18,7 @@ globals
   tick-count
   living-frogs
   time-since-rain ;; tracker for rain delay
-  moisture-gain-threshhold ;; moisture of patch above which frogs gain moisture
+  moisture-gain-threshold ;; moisture of patch above which frogs gain moisture
   ;;wetness-threshhold is wetness of frog, below which they decide to move. set by user in interface.
 ]
 
@@ -41,11 +41,11 @@ turtles-own ;; salamander traits
 to anchorsetup ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; setup function for habitats clustered around anchor patches
   clear-all
   set tick-count 0
-  set moisture-gain-threshhold 0 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; set moisture gain threshhold.
+  set moisture-gain-threshold 0 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; set moisture gain threshhold.
   ask patches [
     set is_anchor false ;; no patches have been chosen as anchors yet
-    set quality-boundary-pos 15 ;; quality value boundaries after which patches are normalized towards 0
-    set quality-boundary-neg -15
+    set moisture-boundary-pos 10 ;; quality value boundaries after which patches are normalized towards 0
+    set moisture-boundary-neg -10
     set patch-moisture random-normal 0 0.5 ;; creates background variation patches
     color-by-quality]
 
@@ -82,12 +82,12 @@ to anchorsetup ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; setup functio
   ask fourth-anchor
   [make-anchor-habitat]
 
-  set-default-shape turtles "salamander"
+  set-default-shape turtles "frog top"
   set num-spawned 100
   create-turtles 100
   [
     set color white
-    set size 3
+    set size 2.5
     setxy (random-xcor) (random-ycor)
     set start-patch patch-here
     set wetness 100
@@ -112,36 +112,28 @@ if ticks > 0 and ticks mod 1 = 0
   ask first-anchor [set patch-moisture patch-moisture + (0 + random 4)] ; // makes quality of anchor vary a little - adds a number between 0 and 5 to the quality value
   ask first-anchor
     [
-      ask n-of 15 patches in-radius habitat-size
-        [set patch-moisture (([patch-moisture] of first-anchor) + (-1 + random 4)) ;; // makes quality of patch surrounding anchor vary a little - adds a number between 0 and 5 to the quality value
-          quality-boundary-check]
+      anchor-habitat-vary
     ]
 
 
   ask second-anchor [set patch-moisture patch-moisture + (0 + random 4)] ;; same as for first-anchor
   ask second-anchor
     [
-      ask n-of 15 patches in-radius habitat-size
-        [set patch-moisture (([patch-moisture] of second-anchor) + (-1 + random 4))
-          quality-boundary-check]
+      anchor-habitat-vary
     ]
 
 
   ask third-anchor [set patch-moisture patch-moisture + (0 + random 4)] ;
   ask third-anchor
     [
-      ask n-of 15 patches in-radius habitat-size
-        [set patch-moisture (([patch-moisture] of third-anchor) + (-1 + random 4))
-          quality-boundary-check]
+      anchor-habitat-vary
     ]
 
 
   ask fourth-anchor [set patch-moisture patch-moisture + (0 + random 4)] ;
   ask fourth-anchor
     [
-      ask n-of 15 patches in-radius habitat-size
-        [set patch-moisture (([patch-moisture] of fourth-anchor) + (-1 + random 4))
-          quality-boundary-check]
+      anchor-habitat-vary
     ]
     ask patches
     [
@@ -150,17 +142,20 @@ if ticks > 0 and ticks mod 1 = 0
   ]
 
   ask patches [fade-anchor] ;; if habitat patch-quality average less than -5 [number not from data] AND generated float < prob-change, patch fades
+  ;ask patches [fade-anchor-new]
+  ask patches [rain]
+  ask patches [moisture-boundary-check]
+  ask patches [color-by-quality]
+
   ask turtles [move] ;;
   ask turtles [age]
   ask turtles [desiccate]
   ask turtles [density-effect]
   ask turtles [death]
-  ask patches [rain]
-  ask patches [color-by-quality]
   set tick-count (tick-count + 1)
   set time-since-rain (time-since-rain + 1)
   tick;
-  if ticks >= 250 [stop]
+  if ticks >= 1200 [stop]
   set living-frogs count turtles
 end
 
@@ -178,9 +173,9 @@ to density-effect
 end
 
 to desiccate
-  if [patch-moisture] of patch-here < moisture-gain-threshhold
+  if [patch-moisture] of patch-here < moisture-gain-threshold
   [set wetness (wetness - 10)] ;; if the new patch has low quality, moisture is lost (movement is more taxing in drier/low quality patches)
-  if [patch-moisture] of patch-here >= moisture-gain-threshhold
+  if [patch-moisture] of patch-here >= moisture-gain-threshold
   [set wetness (wetness + 10)]
 end
 
@@ -221,19 +216,17 @@ to move-wet
 end
 
 to move ;; if wetness of the patch is not enough to gain moisture, AND if frog is drier than wetness threshhold for movement, MOVE-WET.
-  if [patch-moisture] of patch-here < moisture-gain-threshhold
+  if [patch-moisture] of patch-here < moisture-gain-threshold
   [
     if wetness < wetness-threshhold [move-wet]
   ]
 end
 
-to quality-boundary-check ;;
-  set quality-boundary-pos 10 ;; quality value boundaries after which patches are normalized towards 0
-  set quality-boundary-neg -10 ;;
-  if patch-moisture > quality-boundary-pos ;
-          [set patch-moisture (patch-moisture - (5 + random 10))]
-      if patch-moisture < quality-boundary-neg ;
-          [set patch-moisture (patch-moisture + (5 + random 10))]
+to moisture-boundary-check ;;
+  if patch-moisture > moisture-boundary-pos ;
+          [set patch-moisture (patch-moisture - (random 4))]
+      if patch-moisture < moisture-boundary-neg ;
+          [set patch-moisture (patch-moisture + (random 4))]
 end
 
 to rain ;; function for rainfall, spatially clumped.
@@ -241,14 +234,14 @@ to rain ;; function for rainfall, spatially clumped.
   [
     if time-since-rain >= 20
     [
-      ask n-of 4 patches with [is_anchor = false]; ;; when rain happens, two random patches are chosen to have quality increased.
+      ask n-of 2 patches with [is_anchor = false]; ;; when rain happens, two random patches are chosen to have quality increased.
       [
         set pcolor pink
-        set patch-moisture 10
-        ask n-of 15 patches in-radius 4
-        [ set patch-moisture (patch-moisture + 5) ] ;; spread of patches around the chosen rain patches receive "less rain" (less of a quality boost)
+        set patch-moisture (patch-moisture + 3)
+        ask n-of 10 patches in-radius 3
+        [ set patch-moisture (patch-moisture + 2) ] ;; spread of patches around the chosen rain patches receive "less rain" (less of a quality boost)
       ]
-      ;print "rainfall"
+      print "rainfall"
       set time-since-rain 0
     ]
   ]
@@ -258,95 +251,129 @@ to color-by-quality
   set pcolor (scale-color blue patch-moisture 20 -20) ;; higher quality means darker color
 end
 
-to make-anchor-habitat
+to anchor-habitat-vary
   if habitat-size = 2 ;
   [
-    ask patches in-radius 2 ;
-    [set patch-moisture patch-moisture + random-normal 1 3 ;
+    ask up-to-n-of 13 patches in-radius 2 ;
+    [set patch-moisture patch-moisture + random-normal 0 1 ;
     color-by-quality]
   ]
   if habitat-size = 3 ;
   [
-    ask patches in-radius 3 ;
-    [set patch-moisture patch-moisture + random-normal 1 3 ;
+    ask up-to-n-of 25 patches in-radius 3 ;
+    [set patch-moisture patch-moisture + random-normal 0 1 ;
+    color-by-quality]
+  ]
+  if habitat-size = 4 ;
+  [
+    ask up-to-n-of 37 patches in-radius 4 ;
+    [set patch-moisture patch-moisture + random-normal 0 1 ;
+    color-by-quality]
+  ]
+  if habitat-size = 5 ;
+  [
+    ask up-to-n-of 49 patches in-radius 5 ;
+    [set patch-moisture patch-moisture + random-normal 0 1 ;
+    color-by-quality]
+  ]
+  if habitat-size = 6 ;
+  [
+    ask up-to-n-of 62 patches in-radius 6 ;
+    [set patch-moisture patch-moisture + random-normal 0 1 ;
+    color-by-quality]
+  ]
+end
+
+to make-anchor-habitat
+  if habitat-size = 2 ;
+  [
+    ask up-to-n-of 13 patches in-radius 2 ;
+    [set patch-moisture patch-moisture + random-normal 0 1 ;
+    color-by-quality]
+  ]
+  if habitat-size = 3 ;
+  [
+    ask up-to-n-of 25 patches in-radius 3 ;
+    [set patch-moisture patch-moisture + random-normal 0 1 ;
     color-by-quality]
   ]
   if habitat-size = 4 ;
   [
     ask patches in-radius 4 ;
-    [set patch-moisture patch-moisture + random-normal 1 3 ;
+    [set patch-moisture patch-moisture + random-normal 0 1 ;
     color-by-quality]
   ]
   if habitat-size = 5 ;
   [
     ask patches in-radius 5 ;
-    [set patch-moisture patch-moisture + random-normal 1 3 ;
+    [set patch-moisture patch-moisture + random-normal 0 1 ;
     color-by-quality]
   ]
   if habitat-size = 6 ;
   [
     ask patches in-radius 6 ;
-    [set patch-moisture patch-moisture + random-normal 1 3 ;
+    [set patch-moisture patch-moisture + random-normal 0 1 ;
     color-by-quality]
   ]
 end
 
 to fade-anchor
-  if ticks > 0 and ticks mod 1 = 0
+  let fade-threshold -3
+    if ticks > 0 and ticks mod 1 = 0
   [
-    ask first-anchor ;; if habitat patch-quality average less than -5 (line 310) AND generated float < prob-change, (299) patch fades
+    ask first-anchor ;; if habitat patch-quality average less than fade-threshold (line 310) AND generated float < prob-change, (299) patch fades
      [
-      if mean [patch-moisture] of patches in-radius habitat-size < -5
+      if mean [patch-moisture] of patches in-radius habitat-size < fade-threshold
       [
         if random-float 1 < prob-change-1
         [
           ask first-anchor
           [
-            set is_anchor false
+              set is_anchor false
             ask patches in-radius habitat-size
             [
-                set patch-moisture ((mean [patch-moisture] of patches) + random-normal 0 0.5) ;; sets patches of habitat back to standard background variation
+              set patch-moisture random-normal 0 0.5 ;; sets patches of habitat back to standard background variation
             ]
             set first-anchor one-of patches with [ is_anchor = false];; anchor moves.
             make-anchor-habitat
-            ask first-anchor                        ;; this block is an attempt to get newly-moved patches to persist instead of fading again so quickly
+              ask first-anchor                        ;; this block is an attempt to get newly-moved patches to persist instead of fading again so quickly
               [                                       ;;
                 ask patches in-radius habitat-size    ;;
-                  [set patch-moisture patch-moisture + random-normal 0 2]
+                [set patch-moisture patch-moisture + 2] ;;
               ]                                       ;;
             ;print "first-anchor moved!"
           ]
         ]
       ]
     ]
-    ask second-anchor ;; if habitat average less than -5 AND generated float < prob-change, patch fades
+    ask second-anchor ;; if habitat average less than fade-threshold AND generated float < prob-change, patch fades
      [
-      if mean [patch-moisture] of patches in-radius habitat-size < -5
+      if mean [patch-moisture] of patches in-radius habitat-size < fade-threshold
       [
         if random-float 1 < prob-change-2
         [
           ask second-anchor
           [
-             set is_anchor false
+              set is_anchor false
             ask patches in-radius habitat-size
             [
-              set patch-moisture ((mean [patch-moisture] of patches) + random-normal 0 0.5)
+              set patch-moisture random-normal 0 0.5
             ]
             set second-anchor one-of patches with [ is_anchor = false]
             make-anchor-habitat
               ask second-anchor
               [
                 ask patches in-radius habitat-size
-                  [set patch-moisture patch-moisture + random-normal 0 2]
+                [set patch-moisture patch-moisture + 2]
               ]
             ;print "second-anchor moved!"
           ]
         ]
       ]
     ]
-    ask third-anchor ;; if habitat average less than -5 AND generated float < prob-change, patch fades
+    ask third-anchor ;; if habitat average less than fade-threshold AND generated float < prob-change, patch fades
      [
-      if mean [patch-moisture] of patches in-radius habitat-size < -5
+      if mean [patch-moisture] of patches in-radius habitat-size < fade-threshold
       [
         if random-float 1 < prob-change-3
         [
@@ -355,23 +382,23 @@ to fade-anchor
             set is_anchor false
             ask patches in-radius habitat-size
             [
-              set patch-moisture ((mean [patch-moisture] of patches) + random-normal 0 0.5)
+              set patch-moisture random-normal 0 0.5
             ]
             set third-anchor one-of patches with [ is_anchor = false]
             make-anchor-habitat
               ask third-anchor
               [
                 ask patches in-radius habitat-size
-                  [set patch-moisture patch-moisture + random-normal 0 2]
+                [set patch-moisture patch-moisture + 2]
               ]
             ;print "third-anchor moved!"
           ]
         ]
       ]
     ]
-    ask fourth-anchor ;; if habitat average less than -5 AND generated float < prob-change, patch fades
+    ask fourth-anchor ;; if habitat average less than fade-threshold AND generated float < prob-change, patch fades
     [
-      if mean [patch-moisture] of patches in-radius habitat-size < -5
+      if mean [patch-moisture] of patches in-radius habitat-size < fade-threshold
       [
         if random-float 1 < prob-change-4
         [
@@ -380,14 +407,14 @@ to fade-anchor
             set is_anchor false
             ask patches in-radius habitat-size
             [
-              set patch-moisture ((mean [patch-moisture] of patches) + random-normal 0 0.5)
+              set patch-moisture random-normal 0 0.5
             ]
             set fourth-anchor one-of patches with [ is_anchor = false]
             make-anchor-habitat
             ask fourth-anchor
               [
                 ask patches in-radius habitat-size
-                  [set patch-moisture patch-moisture + random-normal 0 2]
+                [set patch-moisture patch-moisture + 2]
               ]
             ;print "fourth-anchor moved!"
           ]
@@ -433,7 +460,7 @@ habitat-size
 habitat-size
 2
 6
-3.0
+4.0
 1
 1
 NIL
@@ -463,7 +490,7 @@ prob-rain
 prob-rain
 0
 100
-25.0
+60.0
 5
 1
 NIL
@@ -478,7 +505,7 @@ prob-change-1
 prob-change-1
 0
 1
-0.5
+0.2
 .1
 1
 NIL
@@ -493,7 +520,7 @@ prob-change-2
 prob-change-2
 0
 1
-0.5
+0.2
 .1
 1
 NIL
@@ -508,22 +535,22 @@ prob-change-3
 prob-change-3
 0
 1
-0.5
+0.2
 .1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-188
-256
-360
-289
+187
+258
+359
+291
 prob-change-4
 prob-change-4
 0
 1
-0.5
+0.2
 .1
 1
 NIL
@@ -886,6 +913,17 @@ Circle -7500403 true true 96 51 108
 Circle -16777216 true false 113 68 74
 Polygon -10899396 true false 189 233 219 188 249 173 279 188 234 218
 Polygon -10899396 true false 180 255 150 210 105 210 75 240 135 240
+
+frog top
+true
+0
+Polygon -7500403 true true 146 18 135 30 119 42 105 90 90 150 105 195 135 225 165 225 195 195 210 150 195 90 180 41 165 30 155 18
+Polygon -7500403 true true 91 176 67 148 70 121 66 119 61 133 59 111 53 111 52 131 47 115 42 120 46 146 55 187 80 237 106 269 116 268 114 214 131 222
+Polygon -7500403 true true 185 62 234 84 223 51 226 48 234 61 235 38 240 38 243 60 252 46 255 49 244 95 188 92
+Polygon -7500403 true true 115 62 66 84 77 51 74 48 66 61 65 38 60 38 57 60 48 46 45 49 56 95 112 92
+Polygon -7500403 true true 200 186 233 148 230 121 234 119 239 133 241 111 247 111 248 131 253 115 258 120 254 146 245 187 220 237 194 269 184 268 186 214 169 222
+Circle -16777216 true false 157 38 18
+Circle -16777216 true false 125 38 18
 
 house
 false
