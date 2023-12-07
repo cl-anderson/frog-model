@@ -155,7 +155,7 @@ if ticks > 0 and ticks mod 1 = 0
   set tick-count (tick-count + 1)
   set time-since-rain (time-since-rain + 1)
   tick;
-  if ticks >= 1200 [stop]
+  if ticks >= 365 [stop]
   set living-frogs count turtles
 end
 
@@ -475,7 +475,7 @@ wetness-threshhold
 wetness-threshhold
 0
 100
-80.0
+100.0
 1
 1
 NIL
@@ -490,7 +490,7 @@ prob-rain
 prob-rain
 0
 100
-60.0
+100.0
 5
 1
 NIL
