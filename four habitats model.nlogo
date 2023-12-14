@@ -11,6 +11,7 @@ globals
                    ;; intended to normalize values and limit extremity.
   moisture-boundary-pos ;; upper value boundary after which moisture values are pulled back towards zero.
                    ;; intended to normalize values and limit extremity.
+  dist-moved
   num-dead
   num-spawned
   tick-count
@@ -18,6 +19,7 @@ globals
   time-since-rain ;; tracker for rain delay
   moisture-gain-threshold ;; moisture of patch above which frogs gain moisture
   ;;wetness-threshhold is wetness of frog, below which they decide to move. set by user in interface.
+  ;;percent-correct
 ]
 undirected-link-breed [ dists dist ]
 patches-own
@@ -29,10 +31,11 @@ patches-own
 turtles-own ;; salamander traits
 [
   start-patch
+  patch-last ; used to save patch for movement distance calculation
   wetness ; low wetness will impact movement choices
   time-since-birth ; this and time-since-reproduction might be useless?
   time-since-reproduction ;
-  calcdensity ; density value of frogs calculated by procedure calculate-density
+  calcdensity ; density value of turtles calculated by procedure calculate-density
 ]
 
 to anchorsetup ; setup function for habitats clustered around anchor patches
@@ -211,7 +214,7 @@ end
 to density-effect
   if calcdensity < 15 ;; turtles "steal" moisture from each other
   [
-    print "density damage occurring"
+    ;print "density damage occurring"
     set wetness (wetness - 10) ;; density wetness effect
     rt random-normal 0 180
     fd 10 ;; move forward in random direction to break up clumping
@@ -387,10 +390,20 @@ to moisture-boundary-check ;;
           ]
 end
 
+to move-penalty
+  let patch-current patch-here
+  ask patch-last
+       [
+         set dist-moved distance patch-current
+       ]
+  set wetness wetness - (dist-moved * 2)
+  print "movement penalized."
+end
 to move-wet
-  let chance-correct (random 100) ; turtles have a chance of making the "correct" choice (moving to highest noisture patch in range)
-  if chance-correct < 60
+  let chance-correct (random 100) ; turtles have a chance of making the "correct" choice (moving to highest moisture patch in range)
+  if chance-correct <= percent-correct
   [
+    let last-patch patch-here ; saving patch turtle is on before movement
     let p max-one-of other patches in-radius 2 [patch-moisture] ;; chooses neighboring patch with highest quality
     if [patch-moisture] of p >= [patch-moisture] of patch-here [move-to p] ;;move to highest quality patch of neighbors UNLESS current patch is highest.
     if [patch-moisture] of p < [patch-moisture] of patch-here ; if max moisture of neighbors is less than current patch, turtle doesnt move.
@@ -405,10 +418,12 @@ to move-wet
 end
 
 to move ;; if wetness of the patch is not enough to gain moisture, AND if turtle is drier than wetness threshhold for movement, MOVE-WET.
+  set patch-last patch-here ; saving patch before turtle moves.
   if [patch-moisture] of patch-here < moisture-gain-threshold
   [
     if wetness <= wetness-threshhold [move-wet]
   ]
+  move-penalty
 end
 
 to rain
@@ -488,7 +503,7 @@ wetness-threshhold
 wetness-threshhold
 0
 100
-70.0
+100.0
 1
 1
 NIL
@@ -795,6 +810,21 @@ mean [calcdensity] of turtles
 2
 1
 11
+
+SLIDER
+195
+401
+321
+434
+percent-correct
+percent-correct
+0
+100
+50.0
+1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
