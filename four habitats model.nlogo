@@ -7,9 +7,9 @@ globals
   second-anchor
   third-anchor
   fourth-anchor
-  moisture-boundary-neg ;; lower value boundary after which quality values are pulled back towards zero.
+  moisture-boundary-neg ;; lower value boundary after which moisture values are pulled back towards zero.
                    ;; intended to normalize values and limit extremity.
-  moisture-boundary-pos ;; upper value boundary after which quality values are pulled back towards zero.
+  moisture-boundary-pos ;; upper value boundary after which moisture values are pulled back towards zero.
                    ;; intended to normalize values and limit extremity.
   num-dead
   num-spawned
@@ -22,7 +22,7 @@ globals
 undirected-link-breed [ dists dist ]
 patches-own
 [
-  patch-moisture ; basically just wetness for now
+  patch-moisture ; patch-owned moisture value. individual to each patch.
   is_anchor ; boolean used to create agentset of current anchor patches
 ]
 
@@ -30,20 +30,20 @@ turtles-own ;; salamander traits
 [
   start-patch
   wetness ; low wetness will impact movement choices
-  time-since-birth ;
+  time-since-birth ; this and time-since-reproduction might be useless?
   time-since-reproduction ;
-  calcdensity
+  calcdensity ; density value of frogs calculated by procedure calculate-density
 ]
 
-to anchorsetup ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; setup function for habitats clustered around anchor patches
+to anchorsetup ; setup function for habitats clustered around anchor patches
   clear-all
   set tick-count 0
-  set moisture-gain-threshold 0 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; set moisture gain threshhold.
+  set moisture-gain-threshold 0 ; set moisture gain threshhold.
   ask patches [
     set is_anchor false ;; no patches have been chosen as anchors yet
-    set moisture-boundary-pos 100 ;; quality value boundaries after which patches are normalized towards 0
+    set moisture-boundary-pos 100 ;; moisture value boundaries after which patches are normalized towards 0
     set moisture-boundary-neg -100
-    set patch-moisture random-normal 0 5 ;; creates background variation patches
+    set patch-moisture random-normal 0 5 ;; creates base values for background (non-habitat) patches
     color-by-quality]
 
   set first-anchor one-of patches ; // assigns random patch to be anchor
@@ -58,7 +58,7 @@ to anchorsetup ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; setup functio
   set fourth-anchor one-of patches with [ is_anchor = false];
   ask fourth-anchor [ set is_anchor true]
 
-  ask first-anchor [set patch-moisture random-normal 50 50 ; // random-normal can generate negatives also- the first number is the mean, second is stdev from there.
+  ask first-anchor [set patch-moisture random-normal 50 50 ; anchor patch is assigned a value from 0 to 100 (plus tails)
   color-by-quality]
   ask second-anchor [set patch-moisture random-normal 50 50 ;
   color-by-quality]
@@ -85,9 +85,9 @@ to anchorsetup ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; setup functio
   [
     set color white
     set size 1.5
-    setxy (random-xcor) (random-ycor)
+    setxy (random-xcor) (random-ycor) ; turtles are placed randomly
     set start-patch patch-here
-    set wetness 100
+    set wetness 100 ; wetness starts at 100
     set time-since-birth 0
   ]
   reset-ticks;
@@ -96,37 +96,36 @@ end
 to anchor-go
 if ticks > 0 and ticks mod 1 = 0
   [
-    if num-dead = num-spawned [stop]
-    ask turtles [wetness-boundary-checking]
+    if num-dead = num-spawned [stop] ; when all turtles die, the model stops.
+    ask turtles [wetness-boundary-checking] ; turtles check wetness: if value is outside boundaries, it is normalized by procedure wetness-boundary-check
   ask patches
     [
-      set patch-moisture (((patch-moisture + (-10 + random 20)) + [patch-moisture] of one-of neighbors) / 2) ;; varies background patches. spatial autocorrelation: wetness of current patch and one neighbor patch are averaged, and current patch value is set to that average.
-      set patch-moisture (mean [patch-moisture] of neighbors + (-10 + random 20)) ;;
+      set patch-moisture (((patch-moisture + (-10 + random 20)) + [patch-moisture] of one-of neighbors) / 2) ;; varies background patches. at very tick. a value between -10 and 10 (plus tails) is added to the patch's moisture. spatial autocorrelation: wetness of current patch and one neighbor patch are averaged, and current patch value is set to that average.
       moisture-boundary-check
     ]
 
-  ask first-anchor [set patch-moisture (patch-moisture + (-5 + random 20))] ; // makes quality of anchor vary a little - adds a number between 0 and 5 to the quality value
+  ask first-anchor [set patch-moisture (patch-moisture + (-5 + random 10))] ; // makes quality of anchor vary a little - adds a number between 0 and 5 to the quality value
   ask first-anchor
     [
       anchor-habitat-vary
     ]
 
 
-  ask second-anchor [set patch-moisture (patch-moisture + (-5 + random 20))] ;; same as for first-anchor
+  ask second-anchor [set patch-moisture (patch-moisture + (-5 + random 10))] ;; same as for first-anchor
   ask second-anchor
     [
       anchor-habitat-vary
     ]
 
 
-  ask third-anchor [set patch-moisture (patch-moisture + (-5 + random 20))] ;
+  ask third-anchor [set patch-moisture (patch-moisture + (-5 + random 10))] ;
   ask third-anchor
     [
       anchor-habitat-vary
     ]
 
 
-  ask fourth-anchor [set patch-moisture (patch-moisture + (-5 + random 20))] ;
+  ask fourth-anchor [set patch-moisture (patch-moisture + (-5 + random 10))] ;
   ask fourth-anchor
     [
       anchor-habitat-vary
@@ -147,12 +146,12 @@ if ticks > 0 and ticks mod 1 = 0
   ask turtles [age]
   ask turtles [desiccate]
   ask turtles [
-    create-dists-with other turtles
+    create-dists-with other turtles ; these links are used to calculate density- see procedure calculate-density
     ask my-links [hide-link]
   ]
   ask turtles [calculate-density]
-  ask turtles [wetness-boundary-checking]
-  if density-damage [ask turtles [density-effect]] ;; can add print "density damage occurring" here as needed
+  ask turtles [wetness-boundary-checking] ; normalize turtle wetness Again
+  if density-damage [ask turtles [density-effect]] ;;
   ask turtles [death]
   set tick-count (tick-count + 1)
   set time-since-rain (time-since-rain + 1)
@@ -165,43 +164,43 @@ end
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; functions
 to age
   set time-since-birth ticks - time-since-birth
-  set time-since-reproduction time-since-reproduction + 1
 end
 
-to anchor-habitat-vary
+to anchor-habitat-vary ; anchor habitat patches have more stable moisture than average patches: it varies less per tick.
   if habitat-size = 2 ;
   [
     ask up-to-n-of 13 patches in-radius 2 ;
-    [set patch-moisture patch-moisture + random-normal 5 15 ;
+    [set patch-moisture patch-moisture + random-normal 0 5 ; variation is addition of a value between -5 and 5 (plus tails)
     color-by-quality]
   ]
   if habitat-size = 3 ;
   [
     ask up-to-n-of 25 patches in-radius 3 ;
-    [set patch-moisture patch-moisture + random-normal 5 15 ;
+    [set patch-moisture (patch-moisture + random-normal 0 5) ;
     color-by-quality]
   ]
   if habitat-size = 4 ;
   [
     ask up-to-n-of 37 patches in-radius 4 ;
-    [set patch-moisture patch-moisture + random-normal 5 15 ;
+    [set patch-moisture (patch-moisture + random-normal 0 5) ;
     color-by-quality]
   ]
   if habitat-size = 5 ;
   [
     ask up-to-n-of 49 patches in-radius 5 ;
-    [set patch-moisture patch-moisture + random-normal 5 15 ;
+    [set patch-moisture (patch-moisture + random-normal 0 5) ;
     color-by-quality]
   ]
   if habitat-size = 6 ;
   [
     ask up-to-n-of 62 patches in-radius 6 ;
-    [set patch-moisture patch-moisture + random-normal 5 15 ;
+    [set patch-moisture (patch-moisture + random-normal 0 5) ;
     color-by-quality]
+    ; back save: set patch-moisture patch-moisture + random-normal 5 15
   ]
 end
 
-to calculate-density
+to calculate-density ; density is mean distance between turtles- each turtle creates a link to every other turtle and averages the link length
   set calcdensity mean [link-length] of dists
 end
 
@@ -210,8 +209,9 @@ to color-by-quality
 end
 
 to density-effect
-  if calcdensity < 4 ;; frogs "steal" moisture from each other
+  if calcdensity < 15 ;; turtles "steal" moisture from each other
   [
+    print "density damage occurring"
     set wetness (wetness - 10) ;; density wetness effect
     rt random-normal 0 180
     fd 10 ;; move forward in random direction to break up clumping
@@ -223,11 +223,11 @@ to desiccate
   if [patch-moisture] of patch-here < moisture-gain-threshold
   [set wetness (wetness - 20)] ;; if the new patch has low quality, moisture is lost (movement is more taxing in drier/low quality patches)
   if [patch-moisture] of patch-here >= moisture-gain-threshold
-  [set wetness (wetness + 10)]
+  [set wetness (wetness + 5)]
 end
 
 to death
-  if wetness <= 0 ;; when frogs dry out they die.
+  if wetness <= 0 ;; when turtle wetness reaches zero, it dies.
   [
     set num-dead (num-dead + 1)
     die
@@ -238,7 +238,7 @@ to fade-anchor
   let fade-threshold 0
     if ticks > 0 and ticks mod 1 = 0
   [
-    ask first-anchor ;; if habitat patch-quality average less than fade-threshold (line 310) AND generated float < prob-change, (299) patch fades
+    ask first-anchor ;; if habitat average moisture less than fade-threshold AND generated float < prob-change, patch fades
      [
       if mean [patch-moisture] of patches in-radius habitat-size < fade-threshold
       [
@@ -258,12 +258,12 @@ to fade-anchor
                 ask patches in-radius habitat-size    ;;
                 [set patch-moisture patch-moisture + 20] ;;
               ]                                       ;;
-            print "first-anchor moved!"
+            ;print "first-anchor moved!"
           ]
         ]
       ]
     ]
-    ask second-anchor ;; if habitat average less than fade-threshold AND generated float < prob-change, patch fades
+    ask second-anchor ;; if habitat average moisture less than fade-threshold AND generated float < prob-change, patch fades
      [
       if mean [patch-moisture] of patches in-radius habitat-size < fade-threshold
       [
@@ -283,12 +283,12 @@ to fade-anchor
                 ask patches in-radius habitat-size
                 [set patch-moisture patch-moisture + 20]
               ]
-            print "second-anchor moved!"
+            ;print "second-anchor moved!"
           ]
         ]
       ]
     ]
-    ask third-anchor ;; if habitat average less than fade-threshold AND generated float < prob-change, patch fades
+    ask third-anchor ;; if habitat average moisture less than fade-threshold AND generated float < prob-change, patch fades
      [
       if mean [patch-moisture] of patches in-radius habitat-size < fade-threshold
       [
@@ -308,12 +308,12 @@ to fade-anchor
                 ask patches in-radius habitat-size
                 [set patch-moisture patch-moisture + 20]
               ]
-            print "third-anchor moved!"
+            ;print "third-anchor moved!"
           ]
         ]
       ]
     ]
-    ask fourth-anchor ;; if habitat average less than fade-threshold AND generated float < prob-change, patch fades
+    ask fourth-anchor ;; if habitat average moisture less than fade-threshold AND generated float < prob-change, patch fades
     [
       if mean [patch-moisture] of patches in-radius habitat-size < fade-threshold
       [
@@ -333,7 +333,7 @@ to fade-anchor
                 ask patches in-radius habitat-size
                 [set patch-moisture patch-moisture + 20]
               ]
-            print "fourth-anchor moved!"
+            ;print "fourth-anchor moved!"
           ]
         ]
       ]
@@ -345,7 +345,7 @@ to make-anchor-habitat
   if habitat-size = 2 ;
   [
     ask up-to-n-of 13 patches in-radius 2 ;
-    [set patch-moisture patch-moisture + random-normal 50 25 ;
+    [set patch-moisture patch-moisture + random-normal 50 25 ; patches within radius add val between 25 and 75 (plus tails) to moisture
     color-by-quality]
   ]
   if habitat-size = 3 ;
@@ -378,31 +378,25 @@ to moisture-boundary-check ;;
   if patch-moisture >= 100 ;
           [
             set patch-moisture 100
-            set patch-moisture patch-moisture - random-normal 20 10
+            set patch-moisture patch-moisture - random-normal 20 10 ; normalizes by subtracting val 10-30 (plus tails)
           ]
       if patch-moisture <= -100 ;
           [
             set patch-moisture -100
-            set patch-moisture patch-moisture + random-normal 20 10
-          ] ;; stop things from getting so negative: [set patch-moisture (patch-moisture + (3 + random 6))]
+            set patch-moisture patch-moisture + random-normal 20 10 ; normalizes by adding val 10-30 (plus tails)
+          ]
 end
 
 to move-wet
-  let chance-right (random 100)
-  if chance-right < 50
+  let chance-correct (random 100) ; turtles have a chance of making the "correct" choice (moving to highest noisture patch in range)
+  if chance-correct < 60
   [
     let p max-one-of other patches in-radius 2 [patch-moisture] ;; chooses neighboring patch with highest quality
-    ;if [patch-moisture] of patch-here < 0
-        ;[set wetness (wetness - 10)] ;; if current patch quality is less than 5, loses extra energy.
     if [patch-moisture] of p >= [patch-moisture] of patch-here [move-to p] ;;move to highest quality patch of neighbors UNLESS current patch is highest.
-    if [patch-moisture] of p < [patch-moisture] of patch-here
-    [
-      rt random-normal 0 180
-      fd 10 ;; move forward in random direction.
-      set wetness (wetness - 20)
-    ]
+    if [patch-moisture] of p < [patch-moisture] of patch-here ; if max moisture of neighbors is less than current patch, turtle doesnt move.
+    []
   ]
-  if chance-right >= 75
+  if chance-correct >= 60
   [
     rt random-normal 0 180
       fd 10 ;; move forward in random direction.
@@ -410,25 +404,25 @@ to move-wet
   ]
 end
 
-to move ;; if wetness of the patch is not enough to gain moisture, AND if frog is drier than wetness threshhold for movement, MOVE-WET.
+to move ;; if wetness of the patch is not enough to gain moisture, AND if turtle is drier than wetness threshhold for movement, MOVE-WET.
   if [patch-moisture] of patch-here < moisture-gain-threshold
   [
     if wetness <= wetness-threshhold [move-wet]
   ]
 end
 
-to rain ;; function for rainfall, spatially clumped.
-  if random 100 < prob-rain
+to rain
+  if time-since-rain >= 20
   [
-    if time-since-rain >= 20
+    if random 100 <= prob-rain ; rain has a CHANCE to occur only every 20 ticks
     [
       ask n-of 2 patches with [is_anchor = false]; ;; when rain happens, two random patches are chosen to have quality increased.
       [
-        set patch-moisture (patch-moisture + 50)
+        set patch-moisture (patch-moisture + 40)
         ask n-of 10 patches in-radius 3
-        [ set patch-moisture (patch-moisture + 40) ] ;; spread of patches around the chosen rain patches receive "less rain" (less of a quality boost)
+        [ set patch-moisture (patch-moisture + 30) ] ;; spread of patches around the chosen rain patches receive rain, but less
       ]
-      ;;print "rainfall"
+      ;print "rainfall"
       set time-since-rain 0
     ]
   ]
@@ -438,18 +432,19 @@ to wetness-boundary-checking
   if wetness >= 100
   [
     set wetness 100
-    set wetness wetness - random-normal 20 10
+    set wetness wetness - random-normal 25 10 ; value between 15 and 35 is subtracted from wetness
+    ;print wetness
   ]
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-361
+453
 10
-779
-429
+785
+343
 -1
 -1
-12.42424242424243
+9.82
 1
 10
 1
@@ -470,114 +465,114 @@ ticks
 30.0
 
 SLIDER
-5
-131
-177
-164
+130
+229
+222
+262
 habitat-size
 habitat-size
 2
 6
-4.0
+5.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-5
-173
-177
-206
+4
+174
+150
+207
 wetness-threshhold
 wetness-threshhold
 0
 100
-100.0
+70.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-5
-215
-177
-248
+15
+229
+107
+262
 prob-rain
 prob-rain
 0
 100
-100.0
+80.0
 5
 1
 NIL
 HORIZONTAL
 
 SLIDER
-187
-131
-359
-164
+6
+268
+115
+301
 prob-change-1
 prob-change-1
 0
 1
-0.2
+0.5
 .1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-187
-172
-359
-205
+120
+268
+231
+301
 prob-change-2
 prob-change-2
 0
 1
-0.2
+0.5
 .1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-187
-214
-359
-247
+6
+307
+114
+340
 prob-change-3
 prob-change-3
 0
 1
-0.2
+0.5
 .1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-187
-258
-359
-291
+121
+307
+231
+340
 prob-change-4
 prob-change-4
 0
 1
-0.2
+0.5
 .1
 1
 NIL
 HORIZONTAL
 
 BUTTON
-6
+21
 14
-94
+109
 47
 anchor setup
 anchorsetup
@@ -592,9 +587,9 @@ NIL
 1
 
 BUTTON
-6
+21
 51
-94
+109
 84
 anchor go
 anchor-go
@@ -609,9 +604,9 @@ NIL
 1
 
 BUTTON
-6
+21
 89
-94
+109
 122
 anchor step
 anchor-go
@@ -626,10 +621,10 @@ NIL
 1
 
 BUTTON
-5
-259
-89
-292
+7
+347
+91
+380
 show anchor 1
 ask first-anchor [set pcolor red]
 NIL
@@ -643,10 +638,10 @@ NIL
 1
 
 BUTTON
-5
-299
-90
-332
+7
+385
+92
+418
 show anchor 2
 ask second-anchor [set pcolor orange]
 NIL
@@ -660,10 +655,10 @@ NIL
 1
 
 BUTTON
-94
-259
-176
-292
+103
+347
+185
+380
 show anchor 3
 ask third-anchor [set pcolor yellow]
 NIL
@@ -677,10 +672,10 @@ NIL
 1
 
 BUTTON
-95
-299
-176
-332
+103
+386
+184
+419
 show anchor 4
 ask fourth-anchor [set pcolor lime]
 NIL
@@ -694,10 +689,10 @@ NIL
 1
 
 BUTTON
-30
-338
-153
-371
+194
+347
+280
+380
 recolor anchors
 ask first-anchor [color-by-quality] \nask second-anchor [color-by-quality] \nask third-anchor [color-by-quality]\nask fourth-anchor [color-by-quality]
 NIL
@@ -711,31 +706,20 @@ NIL
 1
 
 MONITOR
-280
-10
-350
-55
-num-dead
-num-dead
-17
+140
+63
+229
+108
+mean wetness
+mean [wetness] of turtles
+2
 1
 11
 
 MONITOR
-257
-65
-350
-110
-num-spawned
-num-spawned
-17
-1
-11
-
-MONITOR
-176
+139
 10
-266
+229
 55
 living-frogs
 living-frogs
@@ -744,15 +728,73 @@ living-frogs
 11
 
 SWITCH
-203
-340
-349
-373
+5
+131
+131
+164
 density-damage
 density-damage
 0
 1
 -1000
+
+PLOT
+257
+187
+438
+336
+average patch-moisture
+NIL
+NIL
+0.0
+1000.0
+-100.0
+100.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "ask patches [plot mean [patch-moisture] of patches]"
+
+PLOT
+239
+10
+439
+160
+living frogs
+NIL
+NIL
+0.0
+365.0
+0.0
+100.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot count turtles"
+
+MONITOR
+318
+347
+438
+392
+mean patch-moisture
+mean [patch-moisture] of patches
+2
+1
+11
+
+MONITOR
+140
+117
+229
+162
+mean density
+mean [calcdensity] of turtles
+2
+1
+11
 
 @#$#@#$#@
 ## WHAT IS IT?
