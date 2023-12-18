@@ -33,8 +33,6 @@ turtles-own ;; salamander traits
   start-patch
   patch-last ; used to save patch for movement distance calculation
   wetness ; low wetness will impact movement choices
-  time-since-birth ; this and time-since-reproduction might be useless?
-  time-since-reproduction ;
   calcdensity ; density value of turtles calculated by procedure calculate-density
 ]
 
@@ -89,9 +87,7 @@ to anchorsetup ; setup function for habitats clustered around anchor patches
     set color white
     set size 1.5
     setxy (random-xcor) (random-ycor) ; turtles are placed randomly
-    set start-patch patch-here
     set wetness 100 ; wetness starts at 100
-    set time-since-birth 0
   ]
   reset-ticks;
 end
@@ -99,36 +95,40 @@ end
 to anchor-go
 if ticks > 0 and ticks mod 1 = 0
   [
-    if num-dead = num-spawned [stop] ; when all turtles die, the model stops.
+    if num-dead = num-spawned
+       [
+          beep
+          stop
+       ] ; when all turtles die, the model stops.
     ask turtles [wetness-boundary-checking] ; turtles check wetness: if value is outside boundaries, it is normalized by procedure wetness-boundary-check
   ask patches
     [
-      set patch-moisture (((patch-moisture + (-10 + random 20)) + [patch-moisture] of one-of neighbors) / 2) ;; varies background patches. at very tick. a value between -10 and 10 (plus tails) is added to the patch's moisture. spatial autocorrelation: wetness of current patch and one neighbor patch are averaged, and current patch value is set to that average.
+      set patch-moisture ((patch-moisture + ((1.0 - NOISE) * (random-normal -5 20))) + ([patch-moisture] of one-of neighbors)) / 2 ; temporal autocorrelation: NOISE is a decimal variable for how strongly current patch moisture influences the new moisture value. 1.0 - NOISE is then the strenth of the random effect that is added to vary patches. Moisture is then averaged with a neighbor patch to give spatial correlation.
       moisture-boundary-check
     ]
 
-  ask first-anchor [set patch-moisture (patch-moisture + (-5 + random 10))] ; // makes quality of anchor vary a little - adds a number between 0 and 5 to the quality value
+  ask first-anchor [set patch-moisture (patch-moisture + ((1.0 - NOISE) * (random-normal 0 10)))] ; // makes quality of anchor vary a little - adds a number between 0 and 5 to the quality value
   ask first-anchor
     [
       anchor-habitat-vary
     ]
 
 
-  ask second-anchor [set patch-moisture (patch-moisture + (-5 + random 10))] ;; same as for first-anchor
+  ask second-anchor [set patch-moisture (patch-moisture + ((1.0 - NOISE) * (random-normal 0 10)))] ;; same as for first-anchor
   ask second-anchor
     [
       anchor-habitat-vary
     ]
 
 
-  ask third-anchor [set patch-moisture (patch-moisture + (-5 + random 10))] ;
+  ask third-anchor [set patch-moisture (patch-moisture + ((1.0 - NOISE) * (random-normal 0 10)))] ;
   ask third-anchor
     [
       anchor-habitat-vary
     ]
 
 
-  ask fourth-anchor [set patch-moisture (patch-moisture + (-5 + random 10))] ;
+  ask fourth-anchor [set patch-moisture (patch-moisture + ((1.0 - NOISE) * (random-normal 0 10)))] ;
   ask fourth-anchor
     [
       anchor-habitat-vary
@@ -146,7 +146,6 @@ if ticks > 0 and ticks mod 1 = 0
   ask patches [color-by-quality]
 
   ask turtles [move] ;;
-  ask turtles [age]
   ask turtles [desiccate]
   ask turtles [
     create-dists-with other turtles ; these links are used to calculate density- see procedure calculate-density
@@ -159,21 +158,22 @@ if ticks > 0 and ticks mod 1 = 0
   set tick-count (tick-count + 1)
   set time-since-rain (time-since-rain + 1)
   tick;
-  if ticks >= 365 [stop]
+;  if ticks = 100
+;     [
+;       beep
+;       stop
+;     ]
   set living-frogs count turtles
 end
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; functions
-to age
-  set time-since-birth ticks - time-since-birth
-end
 
 to anchor-habitat-vary ; anchor habitat patches have more stable moisture than average patches: it varies less per tick.
   if habitat-size = 2 ;
   [
     ask up-to-n-of 13 patches in-radius 2 ;
-    [set patch-moisture patch-moisture + random-normal 0 5 ; variation is addition of a value between -5 and 5 (plus tails)
+    [set patch-moisture (patch-moisture + random-normal 0 5) ; variation is addition of a value between -5 and 5 (plus tails)
     color-by-quality]
   ]
   if habitat-size = 3 ;
@@ -204,7 +204,10 @@ to anchor-habitat-vary ; anchor habitat patches have more stable moisture than a
 end
 
 to calculate-density ; density is mean distance between turtles- each turtle creates a link to every other turtle and averages the link length
-  set calcdensity mean [link-length] of dists
+  if living-frogs > 1
+  [
+     set calcdensity mean [link-length] of dists
+  ]
 end
 
 to color-by-quality
@@ -396,8 +399,8 @@ to move-penalty
        [
          set dist-moved distance patch-current
        ]
-  set wetness wetness - (dist-moved * 2)
-  print "movement penalized."
+  set wetness wetness - (dist-moved)
+  ;print "movement penalized."
 end
 to move-wet
   let chance-correct (random 100) ; turtles have a chance of making the "correct" choice (moving to highest moisture patch in range)
@@ -419,7 +422,7 @@ end
 
 to move ;; if wetness of the patch is not enough to gain moisture, AND if turtle is drier than wetness threshhold for movement, MOVE-WET.
   set patch-last patch-here ; saving patch before turtle moves.
-  if [patch-moisture] of patch-here < moisture-gain-threshold
+  if [patch-moisture] of patch-here <= moisture-gain-threshold
   [
     if wetness <= wetness-threshhold [move-wet]
   ]
@@ -480,10 +483,10 @@ ticks
 30.0
 
 SLIDER
-130
-229
-222
-262
+120
+299
+231
+332
 habitat-size
 habitat-size
 2
@@ -495,10 +498,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-4
-174
-150
-207
+6
+212
+152
+245
 wetness-threshhold
 wetness-threshhold
 0
@@ -510,10 +513,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-15
-229
-107
-262
+7
+298
+114
+331
 prob-rain
 prob-rain
 0
@@ -526,9 +529,9 @@ HORIZONTAL
 
 SLIDER
 6
-268
+338
 115
-301
+371
 prob-change-1
 prob-change-1
 0
@@ -541,9 +544,9 @@ HORIZONTAL
 
 SLIDER
 120
-268
+338
 231
-301
+371
 prob-change-2
 prob-change-2
 0
@@ -556,9 +559,9 @@ HORIZONTAL
 
 SLIDER
 6
-307
+377
 114
-340
+410
 prob-change-3
 prob-change-3
 0
@@ -571,9 +574,9 @@ HORIZONTAL
 
 SLIDER
 121
-307
+377
 231
-340
+410
 prob-change-4
 prob-change-4
 0
@@ -637,9 +640,9 @@ NIL
 
 BUTTON
 7
-347
+449
 91
-380
+482
 show anchor 1
 ask first-anchor [set pcolor red]
 NIL
@@ -654,9 +657,9 @@ NIL
 
 BUTTON
 7
-385
+487
 92
-418
+520
 show anchor 2
 ask second-anchor [set pcolor orange]
 NIL
@@ -671,9 +674,9 @@ NIL
 
 BUTTON
 103
-347
+449
 185
-380
+482
 show anchor 3
 ask third-anchor [set pcolor yellow]
 NIL
@@ -688,9 +691,9 @@ NIL
 
 BUTTON
 103
-386
+488
 184
-419
+521
 show anchor 4
 ask fourth-anchor [set pcolor lime]
 NIL
@@ -704,10 +707,10 @@ NIL
 1
 
 BUTTON
-194
-347
-280
-380
+190
+469
+276
+502
 recolor anchors
 ask first-anchor [color-by-quality] \nask second-anchor [color-by-quality] \nask third-anchor [color-by-quality]\nask fourth-anchor [color-by-quality]
 NIL
@@ -743,10 +746,10 @@ living-frogs
 11
 
 SWITCH
-5
-131
-131
-164
+7
+173
+133
+206
 density-damage
 density-damage
 0
@@ -780,7 +783,7 @@ living frogs
 NIL
 NIL
 0.0
-365.0
+100.0
 0.0
 100.0
 true
@@ -812,16 +815,31 @@ mean [calcdensity] of turtles
 11
 
 SLIDER
-195
-401
-321
-434
+7
+133
+117
+166
 percent-correct
 percent-correct
 0
 100
-50.0
+40.0
 1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+7
+257
+99
+290
+NOISE
+NOISE
+0
+1.0
+0.6
+.05
 1
 NIL
 HORIZONTAL
